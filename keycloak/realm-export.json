@@ -1,0 +1,206 @@
+{
+  "realm": "college-admin",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "roles": {
+    "realm": [
+      { "name": "PLATFORM_SUPER_ADMIN", "description": "Platform super administrator" },
+      { "name": "TENANT_ADMIN", "description": "College tenant administrator" },
+      { "name": "ACADEMIC_ADMIN", "description": "Academic administrator" },
+      { "name": "EXAM_CONTROLLER", "description": "Exam controller" },
+      { "name": "FACULTY", "description": "Faculty member" },
+      { "name": "HOD", "description": "Head of department" },
+      { "name": "STUDENT", "description": "Student" },
+      { "name": "PLACEMENT_OFFICER", "description": "Placement officer" },
+      { "name": "RECRUITER", "description": "Company recruiter" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "college-admin-api",
+      "name": "College Admin API",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "college-admin-api-secret",
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": true,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "college-admin-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "college-admin-web",
+      "name": "College Admin Web",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": ["http://localhost:3000/*", "http://localhost:5173/*"],
+      "webOrigins": ["*"],
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "superadmin",
+      "enabled": true,
+      "email": "superadmin@platform.local",
+      "emailVerified": true,
+      "firstName": "Platform",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "SuperAdmin@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["PLATFORM_SUPER_ADMIN"],
+      "attributes": {}
+    },
+    {
+      "username": "tenantadmin",
+      "enabled": true,
+      "email": "admin@iiitb.ac.in",
+      "emailVerified": true,
+      "firstName": "Tenant",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "TenantAdmin@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["TENANT_ADMIN"],
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      }
+    },
+    {
+      "username": "examcontroller",
+      "enabled": true,
+      "email": "exam@iiitb.ac.in",
+      "emailVerified": true,
+      "firstName": "Exam",
+      "lastName": "Controller",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Exam@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["EXAM_CONTROLLER"],
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      }
+    },
+    {
+      "username": "placement",
+      "enabled": true,
+      "email": "placement@iiitb.ac.in",
+      "emailVerified": true,
+      "firstName": "Placement",
+      "lastName": "Officer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Placement@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["PLACEMENT_OFFICER"],
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      }
+    },
+    {
+      "username": "faculty1",
+      "enabled": true,
+      "email": "faculty1@iiitb.ac.in",
+      "emailVerified": true,
+      "firstName": "Faculty",
+      "lastName": "One",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Faculty@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["FACULTY"],
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      }
+    },
+    {
+      "username": "student1",
+      "enabled": true,
+      "email": "student1@iiitb.ac.in",
+      "emailVerified": true,
+      "firstName": "Student",
+      "lastName": "One",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Student@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["STUDENT"],
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      }
+    }
+  ]
+}
