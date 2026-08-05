@@ -56,7 +56,7 @@ jobs:
 
       - name: Docker metadata (app)
         id: meta-app
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.img.outputs.prefix }}/app
           tags: |
@@ -68,7 +68,7 @@ jobs:
 
       - name: Docker metadata (frontend)
         id: meta-frontend
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.img.outputs.prefix }}/frontend
           tags: |
