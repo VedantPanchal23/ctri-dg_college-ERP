@@ -12,7 +12,7 @@ public final class PageResponses {
 
     public static Pageable of(int page, int size, String sortBy, String direction) {
         int safePage = Math.max(page, 0);
-        int safeSize = Math.min(Math.max(size, 1), 100);
+        int safeSize = Math.min(Math.max(size, 1), 500);
         Sort.Direction dir = "desc".equalsIgnoreCase(direction) ? Sort.Direction.DESC : Sort.Direction.ASC;
         String property = (sortBy == null || sortBy.isBlank()) ? "createdAt" : sortBy;
         return PageRequest.of(safePage, safeSize, Sort.by(dir, property));
