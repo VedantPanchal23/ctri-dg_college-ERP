@@ -6,6 +6,15 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d --build
 #   powershell -ExecutionPolicy Bypass -File scripts/prod-readiness.ps1 -EnvFile .env.prod
 #
+# CI/CD (GitHub Actions)
+#   Full guide: docs/CICD.md
+#   - CI:         .github/workflows/ci.yml           (mvn verify, frontend build, docker build)
+#   - Publish:    .github/workflows/cd-publish.yml   (push images to ghcr.io)
+#   - Deploy:     .github/workflows/cd-deploy.yml    (SSH + compose release pull)
+#   - Dependabot: .github/dependabot.yml
+#   Configure Actions secrets DEPLOY_* / GHCR_PULL_TOKEN and variable VITE_KEYCLOAK_URL
+#   before enabling automatic production deploys.
+#
 # What the prod overlay does
 # - MySQL not published on the host
 # - Keycloak runs `start` (production mode) with MySQL store (database `keycloak`)
@@ -21,9 +30,10 @@
 #         /realms|/resources -> keycloak:8081
 # - [ ] APP_JWT_ISSUER_URI + VITE_KEYCLOAK_URL = public https://auth… issuer
 # - [ ] APP_CORS_ALLOWED_ORIGINS = public UI origin only
-# - [ ] Rotate `college-admin-api` client secret in Keycloak for non-demo deploys
+# - [ ] Rotate `college-admin-api` client secret in Keycloak for non-demo deployments
 # - [ ] Schedule MySQL backups: scripts/backup-mysql.ps1
 # - [ ] Practice restore: scripts/restore-mysql.ps1 -DumpFile …
+# - [ ] Enable GitHub Actions CD secrets + production environment (docs/CICD.md)
 #
 # Smoke after deploy
 #   powershell -ExecutionPolicy Bypass -File scripts/prod-readiness.ps1

@@ -95,6 +95,7 @@ The internship outcome is a **working end-to-end system**: Docker Compose for lo
 - Audit log browsing for admins  
 - Pagination across major list screens  
 - Production compose overlay, secrets template, backup/restore, readiness script  
+- **CI/CD (GitHub Actions):** test on PR, publish images to GHCR, optional SSH deploy  
 - Full-system QA, browser-role smoke, E2E, live smoke, and light load tests  
 
 ---
@@ -139,6 +140,9 @@ The internship outcome is a **working end-to-end system**: Docker Compose for lo
 | Technology | Role |
 |-----------|------|
 | **Docker / Compose** | Multi-service local & prod overlay |
+| **GitHub Actions** | CI (test/build), CD (GHCR publish + SSH deploy) |
+| **GHCR** | Container registry for app/frontend images |
+| **Dependabot** | Weekly dependency update PRs |
 | **PowerShell + Python scripts** | Demo users, QA, backup, readiness, load |
 | **JUnit / Spring Boot Test / Testcontainers** | Automated backend verification |
 | **Git** | Source control |
@@ -382,6 +386,19 @@ These scripts validate:
 
 ## 8. Production readiness
 
+### 8.0 CI/CD (required for production delivery)
+
+Pipelines are defined under `.github/workflows/`. Full guide: [`docs/CICD.md`](CICD.md).
+
+| Pipeline | File | Purpose |
+|----------|------|---------|
+| CI | `ci.yml` | `mvn verify`, frontend build, Docker build, secret hygiene on every PR |
+| CD Publish | `cd-publish.yml` | Push `app` + `frontend` images to `ghcr.io` |
+| CD Deploy | `cd-deploy.yml` | SSH to server, pull images, `compose` prod+release, health smoke |
+| Dependabot | `dependabot.yml` | Maven / npm / Actions / Docker updates |
+
+Configure GitHub Actions secrets (`DEPLOY_*`, `GHCR_PULL_TOKEN`) and variable `VITE_KEYCLOAK_URL` before enabling automatic production deploys.
+
 ### 8.1 Bring up production overlay
 
 ```powershell
@@ -391,6 +408,8 @@ copy .env.prod.example .env.prod
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d --build
 powershell -File scripts/prod-readiness.ps1 -EnvFile .env.prod
 ```
+
+Or let CD deploy pull pre-built images via `docker-compose.release.yml` + `scripts/remote-deploy.sh`.
 
 ### 8.2 What the prod overlay provides
 
@@ -408,6 +427,7 @@ powershell -File scripts/prod-readiness.ps1 -EnvFile .env.prod
 4. Tight CORS allow-list  
 5. Rotate API client secret in Keycloak  
 6. Scheduled backups (`scripts/backup-mysql.ps1`) and restore drills  
+7. GitHub Actions CD secrets + `production` environment ([`CICD.md`](CICD.md))  
 
 Detailed notes: [`docs/PRODUCTION.md`](PRODUCTION.md).
 
@@ -469,19 +489,22 @@ CA/
 ├── mysql/init/              DB bootstrap (keycloak schema)
 ├── scripts/                 QA, demo users, backup, readiness
 ├── docs/
-│   ├── PRODUCTION.md        Production deploy notes
-│   └── INTERNSHIP_PROJECT_REPORT.md   (this document)
-├── docker-compose.yml       Local/demo stack
-├── docker-compose.prod.yml  Production overlay
+│   ├── PRODUCTION.md
+│   ├── CICD.md
+│   └── INTERNSHIP_PROJECT_REPORT.md
+├── .github/workflows/       CI + CD (publish/deploy)
+├── docker-compose.yml
+├── docker-compose.prod.yml
+├── docker-compose.release.yml
 ├── .env.example
 ├── .env.prod.example
-└── README.md                Technical README / architecture
-```
+└── README.md```
 
 | Document | Contents |
 |----------|----------|
 | [`README.md`](../README.md) | Architecture diagrams, RBAC matrix, API catalog, local setup |
 | [`docs/PRODUCTION.md`](PRODUCTION.md) | Prod compose, hardening checklist, smoke commands |
+| [`docs/CICD.md`](CICD.md) | GitHub Actions CI/CD, GHCR, deploy secrets |
 | [`frontend/README.md`](../frontend/README.md) | Frontend-specific notes |
 
 ---
