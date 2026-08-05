@@ -43,6 +43,9 @@ public class TenantContextFilter extends OncePerRequestFilter {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             if (authentication instanceof JwtAuthenticationToken jwtAuth && jwtAuth.getPrincipal() instanceof Jwt jwt) {
                 AuthUser authUser = resolveAuthUser(jwt);
+                if (authUser.isDisabled()) {
+                    throw ApiException.forbidden("User account is disabled");
+                }
                 if (authUser.tenantId() != null) {
                     TenantContext.setTenantId(authUser.tenantId());
                     Tenant tenant = tenantRepository.findById(authUser.tenantId())
@@ -65,9 +68,11 @@ public class TenantContextFilter extends OncePerRequestFilter {
         } catch (ApiException ex) {
             response.setStatus(ex.getStatus().value());
             response.setContentType("application/json");
+            String code = ex.getCode() == null ? "" : ex.getCode().replace("\\", "\\\\").replace("\"", "\\\"");
+            String message = ex.getMessage() == null ? "" : ex.getMessage().replace("\\", "\\\\").replace("\"", "\\\"");
             response.getWriter().write("""
                     {"code":"%s","message":"%s"}
-                    """.formatted(ex.getCode(), ex.getMessage()));
+                    """.formatted(code, message));
         } finally {
             TenantContext.clear();
         }
@@ -76,24 +81,46 @@ public class TenantContextFilter extends OncePerRequestFilter {
     private AuthUser resolveAuthUser(Jwt jwt) {
         String sub = jwt.getSubject();
         Set<String> jwtRoles = KeycloakJwtAuthenticationConverter.extractRoles(jwt);
-        Optional<UserAccount> existing = userAccountRepository.findByKeycloakSubAndDeletedAtIsNull(sub);
-        if (existing.isPresent()) {
-            UserAccount account = existing.get();
-            Set<String> roles = account.getRoles().isEmpty() ? jwtRoles : account.getRoles();
-            return new AuthUser(
-                    account.getId(),
-                    account.getKeycloakSub(),
-                    account.getEmail(),
-                    account.getDisplayName(),
-                    account.getTenantId(),
-                    account.getCompanyId(),
-                    roles
-            );
+        String email = firstNonBlank(jwt.getClaimAsString("email"), jwt.getClaimAsString("preferred_username"), sub);
+        String name = firstNonBlank(jwt.getClaimAsString("name"), email);
+
+        Optional<UserAccount> bySub = userAccountRepository.findByKeycloakSubAndDeletedAtIsNull(sub);
+        if (bySub.isPresent()) {
+            UserAccount account = bySub.get();
+            UUID jwtTenant = parseUuid(jwt.getClaimAsString("tenant_id"));
+            boolean dirty = false;
+            if (account.getTenantId() == null && jwtTenant != null) {
+                account.setTenantId(jwtTenant);
+                dirty = true;
+            }
+            if ((account.getRoles() == null || account.getRoles().isEmpty()) && jwtRoles != null && !jwtRoles.isEmpty()) {
+                account.setRoles(jwtRoles);
+                dirty = true;
+            }
+            if (dirty) {
+                account = userAccountRepository.save(account);
+            }
+            return toAuthUser(account, jwtRoles);
+        }
+
+        // Keycloak may mint a new `sub` after realm re-import; re-link the existing local account by email.
+        Optional<UserAccount> byEmail = userAccountRepository.findByEmailIgnoreCaseAndDeletedAtIsNull(email);
+        if (byEmail.isPresent()) {
+            UserAccount account = byEmail.get();
+            account.setKeycloakSub(sub);
+            if (account.getDisplayName() == null || account.getDisplayName().isBlank()) {
+                account.setDisplayName(name);
+            }
+            if (account.getRoles() == null || account.getRoles().isEmpty()) {
+                account.setRoles(jwtRoles);
+            }
+            if (account.getTenantId() == null) {
+                account.setTenantId(parseUuid(jwt.getClaimAsString("tenant_id")));
+            }
+            return toAuthUser(userAccountRepository.save(account), jwtRoles);
         }
 
         UUID tenantId = parseUuid(jwt.getClaimAsString("tenant_id"));
-        String email = firstNonBlank(jwt.getClaimAsString("email"), jwt.getClaimAsString("preferred_username"), sub);
-        String name = firstNonBlank(jwt.getClaimAsString("name"), email);
         UserAccount created = new UserAccount();
         created.setKeycloakSub(sub);
         created.setEmail(email);
@@ -101,15 +128,20 @@ public class TenantContextFilter extends OncePerRequestFilter {
         created.setTenantId(tenantId);
         created.setStatus(in.ac.iiitb.ca.identity.UserStatus.ACTIVE);
         created.setRoles(jwtRoles);
-        UserAccount saved = userAccountRepository.save(created);
+        return toAuthUser(userAccountRepository.save(created), jwtRoles);
+    }
+
+    private static AuthUser toAuthUser(UserAccount account, Set<String> jwtRoles) {
+        Set<String> roles = account.getRoles() == null || account.getRoles().isEmpty() ? jwtRoles : account.getRoles();
         return new AuthUser(
-                saved.getId(),
-                saved.getKeycloakSub(),
-                saved.getEmail(),
-                saved.getDisplayName(),
-                saved.getTenantId(),
-                saved.getCompanyId(),
-                jwtRoles
+                account.getId(),
+                account.getKeycloakSub(),
+                account.getEmail(),
+                account.getDisplayName(),
+                account.getTenantId(),
+                account.getCompanyId(),
+                account.getStatus() == null ? in.ac.iiitb.ca.identity.UserStatus.ACTIVE : account.getStatus(),
+                roles
         );
     }
 

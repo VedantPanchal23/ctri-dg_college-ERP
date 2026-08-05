@@ -27,7 +27,7 @@ public class SecurityConfig {
     private final KeycloakJwtAuthenticationConverter jwtAuthenticationConverter;
     private final TenantContextFilter tenantContextFilter;
 
-    @Value("${app.cors.allowed-origins:http://localhost:3000}")
+    @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
     private String allowedOrigins;
 
     @Value("${app.security.jwk-set-uri:}")
@@ -35,6 +35,9 @@ public class SecurityConfig {
 
     @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}")
     private String issuerUri;
+
+    @Value("${springdoc.swagger-ui.enabled:true}")
+    private boolean swaggerEnabled;
 
     public SecurityConfig(
             KeycloakJwtAuthenticationConverter jwtAuthenticationConverter,
@@ -48,17 +51,23 @@ public class SecurityConfig {
         http.csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
-                                "/actuator/health",
-                                "/actuator/health/**",
-                                "/actuator/info",
+                .authorizeHttpRequests(auth -> {
+                    var registry = auth
+                            .requestMatchers(
+                                    "/actuator/health",
+                                    "/actuator/health/**",
+                                    "/actuator/info"
+                            ).permitAll()
+                            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
+                    if (swaggerEnabled) {
+                        registry.requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"
-                        ).permitAll()
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .anyRequest().authenticated())
+                        ).permitAll();
+                    }
+                    registry.anyRequest().authenticated();
+                })
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
                 .addFilterAfter(tenantContextFilter, BearerTokenAuthenticationFilter.class);
         return http.build();

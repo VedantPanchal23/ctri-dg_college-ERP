@@ -50,7 +50,14 @@ app:
   security:
     jwk-set-uri: ${APP_SECURITY_JWK_SET_URI:}
   cors:
-    allowed-origins: http://localhost:3000,http://localhost:5173
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:3000}
+  keycloak:
+    admin:
+      enabled: ${APP_KEYCLOAK_ADMIN_ENABLED:true}
+      server-url: ${APP_KEYCLOAK_ADMIN_URL:http://localhost:8081}
+      realm: ${APP_KEYCLOAK_ADMIN_REALM:college-admin}
+      username: ${APP_KEYCLOAK_ADMIN_USERNAME:admin}
+      password: ${APP_KEYCLOAK_ADMIN_PASSWORD:admin}
 
 logging:
   level:
