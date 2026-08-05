@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (Maven verify)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Run unit & integration tests
+        run: mvn -B verify
+
+      - name: Upload Surefire reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: backend/target/surefire-reports/
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend (build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Production build
+        run: npm run build
+        env:
+          VITE_API_BASE: ""
+          VITE_KEYCLOAK_URL: https://auth.example.com
+          VITE_KEYCLOAK_REALM: college-admin
+          VITE_KEYCLOAK_CLIENT_ID: college-admin-web
+
+  docker:
+    name: Docker images (build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [backend, frontend]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          tags: college-admin-app:ci
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          tags: college-admin-frontend:ci
+          build-args: |
+            VITE_API_BASE=
+            VITE_KEYCLOAK_URL=https://auth.example.com
+            VITE_KEYCLOAK_REALM=college-admin
+            VITE_KEYCLOAK_CLIENT_ID=college-admin-web
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Validate Compose files
+        run: |
+          docker compose -f docker-compose.yml config >/dev/null
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml config >/dev/null
+
+  security-basics:
+    name: Security basics
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Block committed secrets / demo env
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E '(^|/)\.env$|(^|/)\.env\.prod$'; then
+            echo "Committed .env / .env.prod is not allowed"
+            exit 1
+          fi
+          if grep -RIn --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=target \
+              -E 'CHANGE_ME_(ROOT|MYSQL|KC_ADMIN)' .env.prod.example >/dev/null; then
+            echo ".env.prod.example placeholders OK"
+          fi
+          # Fail if real-looking private keys are committed
+          if git ls-files | grep -Ei '\.pem$|id_rsa$|credentials\.json$'; then
+            echo "Possible secret material tracked in git"
+            exit 1
+          fi
+          echo "Secret hygiene checks passed"
