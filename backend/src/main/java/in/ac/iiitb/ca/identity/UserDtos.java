@@ -22,6 +22,15 @@ public class UserDtos {
     public record AssignRolesRequest(@NotEmpty Set<String> roles) {
     }
 
+    public record ResetPasswordRequest(
+            @NotBlank @Size(min = 8, max = 128) String newPassword,
+            boolean temporary
+    ) {
+    }
+
+    public record LinkCompanyRequest(UUID companyId) {
+    }
+
     public record UserResponse(
             UUID id,
             UUID tenantId,

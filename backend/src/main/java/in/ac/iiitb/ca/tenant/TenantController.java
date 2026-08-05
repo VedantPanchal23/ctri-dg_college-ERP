@@ -23,9 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class TenantController {
 
     private final TenantService tenantService;
+    private final TenantBootstrapService tenantBootstrapService;
 
-    public TenantController(TenantService tenantService) {
+    public TenantController(TenantService tenantService, TenantBootstrapService tenantBootstrapService) {
         this.tenantService = tenantService;
+        this.tenantBootstrapService = tenantBootstrapService;
     }
 
     @PostMapping("/platform/tenants")
@@ -82,5 +84,12 @@ public class TenantController {
     @PreAuthorize(Roles.HAS_TENANT_ADMIN)
     public TenantResponse updateMe(@Valid @RequestBody UpdateTenantRequest request) {
         return tenantService.updateCurrent(request);
+    }
+
+    @PostMapping("/tenants/me/bootstrap")
+    @PreAuthorize(Roles.HAS_TENANT_ADMIN)
+    public TenantBootstrapService.BootstrapAcademicResponse bootstrap(
+            @Valid @RequestBody TenantBootstrapService.BootstrapAcademicRequest request) {
+        return tenantBootstrapService.bootstrap(request);
     }
 }

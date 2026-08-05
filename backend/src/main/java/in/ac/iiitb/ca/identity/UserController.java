@@ -2,7 +2,9 @@ package in.ac.iiitb.ca.identity;
 
 import in.ac.iiitb.ca.common.web.PageResponses;
 import in.ac.iiitb.ca.identity.UserDtos.AssignRolesRequest;
+import in.ac.iiitb.ca.identity.UserDtos.LinkCompanyRequest;
 import in.ac.iiitb.ca.identity.UserDtos.LinkUserRequest;
+import in.ac.iiitb.ca.identity.UserDtos.ResetPasswordRequest;
 import in.ac.iiitb.ca.identity.UserDtos.UserResponse;
 import in.ac.iiitb.ca.security.Roles;
 import jakarta.validation.Valid;
@@ -22,15 +24,24 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     private final UserAccountService userAccountService;
+    private final ProvisioningService provisioningService;
 
-    public UserController(UserAccountService userAccountService) {
+    public UserController(UserAccountService userAccountService, ProvisioningService provisioningService) {
         this.userAccountService = userAccountService;
+        this.provisioningService = provisioningService;
     }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','TENANT_ADMIN')")
     public UserResponse link(@Valid @RequestBody LinkUserRequest request) {
         return userAccountService.linkUser(request);
+    }
+
+    @PostMapping("/provision")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','TENANT_ADMIN')")
+    public ProvisioningService.ProvisionedUserResponse provision(
+            @Valid @RequestBody ProvisioningService.ProvisionUserRequest request) {
+        return provisioningService.provision(request);
     }
 
     @GetMapping
@@ -69,5 +80,17 @@ public class UserController {
     @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','TENANT_ADMIN')")
     public UserResponse enable(@PathVariable UUID id) {
         return userAccountService.setStatus(id, UserStatus.ACTIVE);
+    }
+
+    @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','TENANT_ADMIN')")
+    public void resetPassword(@PathVariable UUID id, @Valid @RequestBody ResetPasswordRequest request) {
+        userAccountService.resetPassword(id, request.newPassword(), request.temporary());
+    }
+
+    @PutMapping("/{id}/company")
+    @PreAuthorize("hasAnyRole('PLATFORM_SUPER_ADMIN','TENANT_ADMIN','PLACEMENT_OFFICER')")
+    public UserResponse linkCompany(@PathVariable UUID id, @RequestBody LinkCompanyRequest request) {
+        return userAccountService.linkCompany(id, request.companyId());
     }
 }

@@ -6,9 +6,12 @@ import in.ac.iiitb.ca.common.tenant.TenantContext;
 import in.ac.iiitb.ca.identity.UserDtos.AssignRolesRequest;
 import in.ac.iiitb.ca.identity.UserDtos.LinkUserRequest;
 import in.ac.iiitb.ca.identity.UserDtos.UserResponse;
+import in.ac.iiitb.ca.placement.Company;
+import in.ac.iiitb.ca.placement.CompanyRepository;
 import in.ac.iiitb.ca.security.AuthUser;
 import in.ac.iiitb.ca.security.Roles;
 import in.ac.iiitb.ca.security.SecurityUtils;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -33,10 +36,18 @@ public class UserAccountService {
 
     private final UserAccountRepository userAccountRepository;
     private final AuditService auditService;
+    private final KeycloakAdminClient keycloakAdminClient;
+    private final CompanyRepository companyRepository;
 
-    public UserAccountService(UserAccountRepository userAccountRepository, AuditService auditService) {
+    public UserAccountService(
+            UserAccountRepository userAccountRepository,
+            AuditService auditService,
+            KeycloakAdminClient keycloakAdminClient,
+            CompanyRepository companyRepository) {
         this.userAccountRepository = userAccountRepository;
         this.auditService = auditService;
+        this.keycloakAdminClient = keycloakAdminClient;
+        this.companyRepository = companyRepository;
     }
 
     @Transactional
@@ -102,6 +113,9 @@ public class UserAccountService {
         enforceTenantAccess(account);
         account.setRoles(request.roles());
         UserAccount saved = userAccountRepository.save(account);
+        if (keycloakAdminClient.isEnabled()) {
+            keycloakAdminClient.syncRealmRoles(saved.getKeycloakSub(), List.copyOf(request.roles()));
+        }
         auditService.record("USER_ROLES_ASSIGNED", "UserAccount", saved.getId(), String.join(",", request.roles()));
         return UserResponse.from(saved);
     }
@@ -111,7 +125,45 @@ public class UserAccountService {
         UserAccount account = require(id);
         enforceTenantAccess(account);
         account.setStatus(status);
-        return UserResponse.from(userAccountRepository.save(account));
+        UserAccount saved = userAccountRepository.save(account);
+        if (keycloakAdminClient.isEnabled()) {
+            keycloakAdminClient.setUserEnabled(saved.getKeycloakSub(), status == UserStatus.ACTIVE);
+        }
+        auditService.record("USER_STATUS_" + status.name(), "UserAccount", saved.getId(), null);
+        return UserResponse.from(saved);
+    }
+
+    @Transactional
+    public void resetPassword(UUID id, String newPassword, boolean temporary) {
+        UserAccount account = require(id);
+        enforceTenantAccess(account);
+        if (!keycloakAdminClient.isEnabled()) {
+            throw ApiException.badRequest("Keycloak admin is disabled");
+        }
+        keycloakAdminClient.resetPassword(account.getKeycloakSub(), newPassword, temporary);
+        auditService.record("USER_PASSWORD_RESET", "UserAccount", account.getId(), temporary ? "temporary" : "permanent");
+    }
+
+    @Transactional
+    public UserResponse linkCompany(UUID id, UUID companyId) {
+        UserAccount account = require(id);
+        enforceTenantAccess(account);
+        if (companyId != null) {
+            UUID tenantId = account.getTenantId() != null ? account.getTenantId() : TenantContext.getTenantId();
+            Company company = companyRepository
+                    .findById(companyId)
+                    .orElseThrow(() -> ApiException.notFound("Company not found"));
+            if (company.getDeletedAt() != null) {
+                throw ApiException.notFound("Company not found");
+            }
+            if (tenantId != null && company.getTenantId() != null && !tenantId.equals(company.getTenantId())) {
+                throw ApiException.notFound("Company not found");
+            }
+        }
+        account.setCompanyId(companyId);
+        UserAccount saved = userAccountRepository.save(account);
+        auditService.record("USER_COMPANY_LINKED", "UserAccount", saved.getId(), companyId == null ? null : companyId.toString());
+        return UserResponse.from(saved);
     }
 
     public UserAccount require(UUID id) {
