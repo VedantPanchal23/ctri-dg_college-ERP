@@ -8,7 +8,10 @@ import in.ac.iiitb.ca.academic.StudentProfile;
 import in.ac.iiitb.ca.academic.StudentProfileRepository;
 import in.ac.iiitb.ca.common.audit.AuditService;
 import in.ac.iiitb.ca.common.error.ApiException;
+import in.ac.iiitb.ca.common.notification.NotificationService;
 import in.ac.iiitb.ca.common.tenant.TenantContext;
+import in.ac.iiitb.ca.identity.UserAccount;
+import in.ac.iiitb.ca.identity.UserAccountRepository;
 import in.ac.iiitb.ca.placement.PlacementDtos.ApplicationResponse;
 import in.ac.iiitb.ca.placement.PlacementDtos.BranchPlacedCount;
 import in.ac.iiitb.ca.placement.PlacementDtos.CompanyResponse;
@@ -53,8 +56,10 @@ public class PlacementService {
     private final BranchRepository branchRepository;
     private final BatchRepository batchRepository;
     private final StudentProfileRepository studentProfileRepository;
+    private final UserAccountRepository userAccountRepository;
     private final EligibilityEngine eligibilityEngine;
     private final AuditService auditService;
+    private final NotificationService notificationService;
 
     public PlacementService(
             CompanyRepository companyRepository,
@@ -65,8 +70,10 @@ public class PlacementService {
             BranchRepository branchRepository,
             BatchRepository batchRepository,
             StudentProfileRepository studentProfileRepository,
+            UserAccountRepository userAccountRepository,
             EligibilityEngine eligibilityEngine,
-            AuditService auditService) {
+            AuditService auditService,
+            NotificationService notificationService) {
         this.companyRepository = companyRepository;
         this.jobDriveRepository = jobDriveRepository;
         this.applicationRepository = applicationRepository;
@@ -75,8 +82,10 @@ public class PlacementService {
         this.branchRepository = branchRepository;
         this.batchRepository = batchRepository;
         this.studentProfileRepository = studentProfileRepository;
+        this.userAccountRepository = userAccountRepository;
         this.eligibilityEngine = eligibilityEngine;
         this.auditService = auditService;
+        this.notificationService = notificationService;
     }
 
     // --- Companies ---
@@ -170,8 +179,10 @@ public class PlacementService {
         Page<JobDrive> page;
 
         if (isRecruiterOnly(user)) {
-            UUID recruiterCompanyId = requireRecruiterCompanyId(user);
-            page = jobDriveRepository.findByTenantIdAndCompanyIdAndDeletedAtIsNull(tenantId, recruiterCompanyId, pageable);
+            if (user.companyId() == null) {
+                return Page.empty(pageable);
+            }
+            page = jobDriveRepository.findByTenantIdAndCompanyIdAndDeletedAtIsNull(tenantId, user.companyId(), pageable);
         } else if (companyId != null) {
             page = jobDriveRepository.findByTenantIdAndCompanyIdAndDeletedAtIsNull(tenantId, companyId, pageable);
         } else if (status != null) {
@@ -352,6 +363,15 @@ public class PlacementService {
         application.setStatus(request.status());
         PlacementApplication saved = applicationRepository.save(application);
         auditService.record("PLACEMENT_APPLICATION_STATUS", "PlacementApplication", saved.getId(), request.status().name());
+        studentProfileRepository.findById(saved.getStudentId()).ifPresent(student -> {
+            if (student.getUserId() != null) {
+                notificationService.notifyUser(
+                        student.getUserId(),
+                        "Application update",
+                        "Your placement application status is now " + request.status().name() + ".",
+                        "/app/placements");
+            }
+        });
         return ApplicationResponse.from(saved);
     }
 
@@ -437,6 +457,15 @@ public class PlacementService {
         applicationRepository.save(application);
 
         auditService.record("OFFER_ISSUED", "Offer", saved.getId(), applicationId.toString());
+        studentProfileRepository.findById(application.getStudentId()).ifPresent(student -> {
+            if (student.getUserId() != null) {
+                notificationService.notifyUser(
+                        student.getUserId(),
+                        "Job offer received",
+                        "You have a new placement offer. Review it under Placements.",
+                        "/app/placements");
+            }
+        });
         return OfferResponse.from(saved);
     }
 
@@ -460,6 +489,10 @@ public class PlacementService {
         offer.setRespondedAt(Instant.now());
         Offer saved = offerRepository.save(offer);
         auditService.record("OFFER_ACCEPTED", "Offer", saved.getId(), null);
+        notifyPlacementStaff(
+                "Offer accepted",
+                "A student accepted a placement offer.",
+                "/app/placements");
         return OfferResponse.from(saved);
     }
 
@@ -478,6 +511,10 @@ public class PlacementService {
         offer.setRespondedAt(Instant.now());
         Offer saved = offerRepository.save(offer);
         auditService.record("OFFER_DECLINED", "Offer", saved.getId(), null);
+        notifyPlacementStaff(
+                "Offer declined",
+                "A student declined a placement offer.",
+                "/app/placements");
         return OfferResponse.from(saved);
     }
 
@@ -494,6 +531,15 @@ public class PlacementService {
         offer.setStatus(OfferStatus.EXPIRED);
         Offer saved = offerRepository.save(offer);
         auditService.record("OFFER_EXPIRED", "Offer", saved.getId(), null);
+        studentProfileRepository.findById(application.getStudentId()).ifPresent(student -> {
+            if (student.getUserId() != null) {
+                notificationService.notifyUser(
+                        student.getUserId(),
+                        "Offer expired",
+                        "A placement offer has expired.",
+                        "/app/placements");
+            }
+        });
         return OfferResponse.from(saved);
     }
 
@@ -502,6 +548,15 @@ public class PlacementService {
         Offer offer = requireOffer(offerId);
         PlacementApplication application = requireApplication(offer.getApplicationId());
         enforceApplicationAccess(application);
+        return OfferResponse.from(offer);
+    }
+
+    @Transactional(readOnly = true)
+    public OfferResponse getOfferByApplication(UUID applicationId) {
+        PlacementApplication application = requireApplication(applicationId);
+        enforceApplicationAccess(application);
+        Offer offer = offerRepository.findByApplicationId(applicationId)
+                .orElseThrow(() -> ApiException.notFound("Offer not found for application"));
         return OfferResponse.from(offer);
     }
 
@@ -545,6 +600,17 @@ public class PlacementService {
     }
 
     // --- helpers ---
+
+    private void notifyPlacementStaff(String title, String body, String link) {
+        UUID tenantId = TenantContext.requireTenantId();
+        List<UUID> staff = userAccountRepository
+                .findActiveByTenantIdAndRolesIn(
+                        tenantId, List.of(Roles.PLACEMENT_OFFICER, Roles.TENANT_ADMIN))
+                .stream()
+                .map(UserAccount::getId)
+                .toList();
+        notificationService.notifyUsers(staff, title, body, link);
+    }
 
     private void applyDriveFields(
             JobDrive drive,

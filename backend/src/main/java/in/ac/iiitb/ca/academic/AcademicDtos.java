@@ -155,6 +155,12 @@ public class AcademicDtos {
     ) {
     }
 
+    public record UpdateFacultyProfileRequest(
+            @NotBlank @Size(max = 64) String employeeCode,
+            @Size(max = 128) String department
+    ) {
+    }
+
     public record FacultyProfileResponse(
             UUID id,
             UUID tenantId,

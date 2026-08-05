@@ -10,6 +10,7 @@ import in.ac.iiitb.ca.academic.AcademicDtos.CreateCourseOfferingRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.CreateCourseRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.CreateEnrollmentRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.CreateFacultyProfileRequest;
+import in.ac.iiitb.ca.academic.AcademicDtos.UpdateFacultyProfileRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.CreateProgramRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.CreateStudentProfileRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.EnrollmentResponse;
@@ -215,6 +216,13 @@ public class AcademicController {
         return academicService.getFaculty(id);
     }
 
+    @PutMapping("/faculty/{id}")
+    @PreAuthorize(Roles.HAS_ACADEMIC_ADMIN)
+    public FacultyProfileResponse updateFaculty(
+            @PathVariable UUID id, @Valid @RequestBody UpdateFacultyProfileRequest request) {
+        return academicService.updateFaculty(id, request);
+    }
+
     // --- Students ---
 
     @PostMapping("/students")
@@ -272,6 +280,12 @@ public class AcademicController {
     @PreAuthorize(READ_ACADEMIC)
     public CourseOfferingResponse getOffering(@PathVariable UUID id) {
         return academicService.getOffering(id);
+    }
+
+    @DeleteMapping("/offerings/{id}")
+    @PreAuthorize(Roles.HAS_ACADEMIC_ADMIN)
+    public void deleteOffering(@PathVariable UUID id) {
+        academicService.deleteOffering(id);
     }
 
     // --- Enrollments ---

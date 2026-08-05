@@ -164,6 +164,12 @@ public class ExamController {
         return examService.listMarks(id);
     }
 
+    @GetMapping("/marks/me")
+    @PreAuthorize(Roles.HAS_STUDENT)
+    public List<MarksEntryResponse> myPublishedMarks() {
+        return examService.myPublishedMarks();
+    }
+
     @PostMapping("/schedules/{id}/marks/lock")
     @PreAuthorize(Roles.HAS_EXAM_CONTROLLER)
     public ExamScheduleResponse lockMarks(@PathVariable UUID id) {

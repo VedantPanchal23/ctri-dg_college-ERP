@@ -11,7 +11,10 @@ import in.ac.iiitb.ca.academic.StudentProfile;
 import in.ac.iiitb.ca.academic.StudentProfileRepository;
 import in.ac.iiitb.ca.common.audit.AuditService;
 import in.ac.iiitb.ca.common.error.ApiException;
+import in.ac.iiitb.ca.common.notification.NotificationService;
 import in.ac.iiitb.ca.common.tenant.TenantContext;
+import in.ac.iiitb.ca.identity.UserAccount;
+import in.ac.iiitb.ca.identity.UserAccountRepository;
 import in.ac.iiitb.ca.exam.ExamDtos.AllocateSeatsRequest;
 import in.ac.iiitb.ca.exam.ExamDtos.CreateExamScheduleRequest;
 import in.ac.iiitb.ca.exam.ExamDtos.CreateExamSessionRequest;
@@ -61,7 +64,9 @@ public class ExamService {
     private final EnrollmentRepository enrollmentRepository;
     private final StudentProfileRepository studentProfileRepository;
     private final FacultyProfileRepository facultyProfileRepository;
+    private final UserAccountRepository userAccountRepository;
     private final AuditService auditService;
+    private final NotificationService notificationService;
 
     public ExamService(
             ExamSessionRepository examSessionRepository,
@@ -74,7 +79,9 @@ public class ExamService {
             EnrollmentRepository enrollmentRepository,
             StudentProfileRepository studentProfileRepository,
             FacultyProfileRepository facultyProfileRepository,
-            AuditService auditService) {
+            UserAccountRepository userAccountRepository,
+            AuditService auditService,
+            NotificationService notificationService) {
         this.examSessionRepository = examSessionRepository;
         this.examScheduleRepository = examScheduleRepository;
         this.hallTicketRepository = hallTicketRepository;
@@ -85,7 +92,9 @@ public class ExamService {
         this.enrollmentRepository = enrollmentRepository;
         this.studentProfileRepository = studentProfileRepository;
         this.facultyProfileRepository = facultyProfileRepository;
+        this.userAccountRepository = userAccountRepository;
         this.auditService = auditService;
+        this.notificationService = notificationService;
     }
 
     // --- Exam sessions ---
@@ -278,6 +287,17 @@ public class ExamService {
             savedTickets.add(hallTicketRepository.save(ticket));
         }
 
+        for (HallTicket ticket : savedTickets) {
+            StudentProfile student = studentsById.get(ticket.getStudentId());
+            if (student != null && student.getUserId() != null) {
+                notificationService.notifyUser(
+                        student.getUserId(),
+                        "Hall ticket ready",
+                        "Your hall ticket status is " + ticket.getStatus() + ". Check Exams for details.",
+                        "/app/exams");
+            }
+        }
+
         auditService.record(
                 "HALL_TICKETS_GENERATED",
                 "ExamSchedule",
@@ -432,6 +452,21 @@ public class ExamService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<MarksEntryResponse> myPublishedMarks() {
+        UUID tenantId = TenantContext.requireTenantId();
+        StudentProfile student = requireCurrentStudent(tenantId);
+        return marksEntryRepository.findByTenantIdAndStudentId(tenantId, student.getId()).stream()
+                .filter(entry -> {
+                    ExamSchedule schedule = examScheduleRepository
+                            .findByIdAndTenantIdAndDeletedAtIsNull(entry.getExamScheduleId(), tenantId)
+                            .orElse(null);
+                    return schedule != null && schedule.isGradesPublished();
+                })
+                .map(MarksEntryResponse::from)
+                .toList();
+    }
+
     @Transactional
     public ExamScheduleResponse lockMarks(UUID scheduleId) {
         ExamSchedule schedule = requireSchedule(scheduleId);
@@ -458,6 +493,15 @@ public class ExamService {
         List<MarksEntry> entries = marksEntryRepository.findByTenantIdAndExamScheduleId(tenantId, scheduleId);
         for (MarksEntry entry : entries) {
             recalculateStudentAcademics(tenantId, entry.getStudentId());
+            studentProfileRepository.findById(entry.getStudentId()).ifPresent(student -> {
+                if (student.getUserId() != null) {
+                    notificationService.notifyUser(
+                            student.getUserId(),
+                            "Grades published",
+                            "Your grades for an exam schedule are now available.",
+                            "/app/exams");
+                }
+            });
         }
 
         auditService.record("GRADES_PUBLISHED", "ExamSchedule", scheduleId, "students=" + entries.size());
@@ -495,6 +539,16 @@ public class ExamService {
 
         RevaluationRequest saved = revaluationRequestRepository.save(reval);
         auditService.record("REVALUATION_REQUESTED", "RevaluationRequest", saved.getId(), null);
+        List<UUID> examStaff = userAccountRepository
+                .findActiveByTenantIdAndRolesIn(tenantId, List.of(Roles.EXAM_CONTROLLER, Roles.TENANT_ADMIN))
+                .stream()
+                .map(UserAccount::getId)
+                .toList();
+        notificationService.notifyUsers(
+                examStaff,
+                "Revaluation requested",
+                "A student requested revaluation. Review it under Exams.",
+                "/app/exams");
         return RevaluationRequestResponse.from(saved);
     }
 
@@ -547,6 +601,15 @@ public class ExamService {
                 "RevaluationRequest",
                 saved.getId(),
                 request.decisionNotes());
+        studentProfileRepository.findById(saved.getStudentId()).ifPresent(student -> {
+            if (student.getUserId() != null) {
+                notificationService.notifyUser(
+                        student.getUserId(),
+                        "Revaluation " + request.status().name().toLowerCase(),
+                        "Your revaluation request was " + request.status().name().toLowerCase() + ".",
+                        "/app/exams");
+            }
+        });
         return RevaluationRequestResponse.from(saved);
     }
 

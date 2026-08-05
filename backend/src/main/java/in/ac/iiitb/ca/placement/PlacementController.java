@@ -187,6 +187,12 @@ public class PlacementController {
         return placementService.issueOffer(id, request);
     }
 
+    @GetMapping("/applications/{id}/offer")
+    @PreAuthorize("hasAnyRole('TENANT_ADMIN','PLACEMENT_OFFICER','RECRUITER','STUDENT')")
+    public OfferResponse getOfferByApplication(@PathVariable UUID id) {
+        return placementService.getOfferByApplication(id);
+    }
+
     // --- Offers ---
 
     @GetMapping("/offers/{id}")

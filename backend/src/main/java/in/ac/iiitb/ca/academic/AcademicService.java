@@ -10,6 +10,7 @@ import in.ac.iiitb.ca.academic.AcademicDtos.CreateCourseOfferingRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.CreateCourseRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.CreateEnrollmentRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.CreateFacultyProfileRequest;
+import in.ac.iiitb.ca.academic.AcademicDtos.UpdateFacultyProfileRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.CreateProgramRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.CreateStudentProfileRequest;
 import in.ac.iiitb.ca.academic.AcademicDtos.EnrollmentResponse;
@@ -300,6 +301,22 @@ public class AcademicService {
         return FacultyProfileResponse.from(requireFaculty(id));
     }
 
+    @Transactional
+    public FacultyProfileResponse updateFaculty(UUID id, UpdateFacultyProfileRequest request) {
+        FacultyProfile profile = requireFaculty(id);
+        UUID tenantId = profile.getTenantId();
+        facultyProfileRepository
+                .findByTenantIdAndEmployeeCodeIgnoreCaseAndDeletedAtIsNull(tenantId, request.employeeCode().trim())
+                .ifPresent(existing -> {
+                    if (!existing.getId().equals(id)) {
+                        throw ApiException.conflict("Employee code already exists");
+                    }
+                });
+        profile.setEmployeeCode(request.employeeCode().trim().toUpperCase());
+        profile.setDepartment(request.department() == null ? null : request.department().trim());
+        return FacultyProfileResponse.from(facultyProfileRepository.save(profile));
+    }
+
     // --- Students ---
 
     @Transactional
@@ -390,6 +407,13 @@ public class AcademicService {
     @Transactional(readOnly = true)
     public CourseOfferingResponse getOffering(UUID id) {
         return CourseOfferingResponse.from(requireOffering(id));
+    }
+
+    @Transactional
+    public void deleteOffering(UUID id) {
+        CourseOffering offering = requireOffering(id);
+        offering.setDeletedAt(Instant.now());
+        courseOfferingRepository.save(offering);
     }
 
     // --- Enrollments ---
