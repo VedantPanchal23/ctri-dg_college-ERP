@@ -332,6 +332,7 @@ Other available scripts:
 Detailed documentation is available in the [`docs/`](docs/) directory:
 
 - [**Internship Project Report**](docs/INTERNSHIP_PROJECT_REPORT.md): Complete 500+ line technical project report including background, architectural decisions, multi-tenant isolation mechanics, module specifications, security verification, and performance evaluation.
+- [**CI/CD Pipeline Guide**](docs/CICD.md): Detailed GitHub Actions workflows, GHCR container publishing, SSH remote deployment, Dependabot setup, and secret management.
 - [**Production Deployment Guide**](docs/PRODUCTION.md): Production hardening, environment variable configurations, SSL/TLS reverse proxy setup, and database backup strategies.
 
 ---
