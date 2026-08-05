@@ -17,6 +17,11 @@ backend/*.txt
 .env
 .env.*
 !.env.example
+!.env.prod.example
+!frontend/.env.development
+!frontend/.env.production
 
 # Docker volumes (local)
 ca_mysql_data/
+
+backups/

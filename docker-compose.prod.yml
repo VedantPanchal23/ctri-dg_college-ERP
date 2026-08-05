@@ -1,0 +1,74 @@
+# Production-oriented override for College Admin
+# Usage:
+#   copy .env.prod.example .env.prod
+#   # edit every CHANGE_ME value + public URLs
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d --build
+
+services:
+  mysql:
+    ports: []
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-college_admin}
+      MYSQL_USER: ${MYSQL_USER:-ca_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - ca_mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+
+  keycloak:
+    # Production mode (not start-dev) with MySQL-backed store.
+    command: ["start", "--import-realm", "--http-port=8081"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HTTP_PORT: 8081
+      KC_HOSTNAME: ${KC_HOSTNAME:-localhost}
+      KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT:-8081}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_DB: mysql
+      KC_DB_URL: jdbc:mysql://mysql:3306/keycloak?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8
+      KC_DB_USERNAME: ${MYSQL_USER:-ca_user}
+      KC_DB_PASSWORD: ${MYSQL_PASSWORD}
+    # Bind to loopback by default; put a reverse proxy in front for public HTTPS.
+    ports:
+      - "${KC_BIND:-127.0.0.1}:${KC_HOSTNAME_PORT:-8081}:8081"
+    restart: unless-stopped
+
+  app:
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker,prod
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-college_admin}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-ca_user}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: ${APP_JWT_ISSUER_URI}
+      APP_SECURITY_JWK_SET_URI: http://keycloak:8081/realms/college-admin/protocol/openid-connect/certs
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS}
+      APP_KEYCLOAK_ADMIN_ENABLED: "true"
+      APP_KEYCLOAK_ADMIN_URL: http://keycloak:8081
+      APP_KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      APP_KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+  frontend:
+    restart: unless-stopped
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ""
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL}
+        VITE_KEYCLOAK_REALM: college-admin
+        VITE_KEYCLOAK_CLIENT_ID: college-admin-web
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"

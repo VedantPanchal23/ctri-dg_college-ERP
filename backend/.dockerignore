@@ -1,0 +1,6 @@
+target
+.idea
+*.iml
+.mvn
+.DS_Store
+*.md

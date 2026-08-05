@@ -67,7 +67,7 @@
       "publicClient": true,
       "directAccessGrantsEnabled": true,
       "standardFlowEnabled": true,
-      "redirectUris": ["http://localhost:3000/*", "http://localhost:5173/*"],
+      "redirectUris": ["http://localhost:3000/*", "http://localhost:5173/*", "http://127.0.0.1:5173/*", "http://127.0.0.1:3000/*"],
       "webOrigins": ["*"],
       "protocol": "openid-connect",
       "fullScopeAllowed": true,
@@ -84,6 +84,17 @@
             "id.token.claim": "true",
             "access.token.claim": "true",
             "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "college-admin-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
           }
         }
       ]
@@ -198,6 +209,25 @@
         }
       ],
       "realmRoles": ["STUDENT"],
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      }
+    },
+    {
+      "username": "recruiter1",
+      "enabled": true,
+      "email": "recruiter1@iiitb.ac.in",
+      "emailVerified": true,
+      "firstName": "Campus",
+      "lastName": "Recruiter",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Recruiter@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["RECRUITER"],
       "attributes": {
         "tenant_id": ["00000000-0000-0000-0000-000000000001"]
       }
