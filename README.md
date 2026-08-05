@@ -1,4 +1,4 @@
-# 🏛️ Multi-Tenant College Administration ERP Platform
+# Multi-Tenant College Administration ERP Platform
 
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.0-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![React](https://img.shields.io/badge/React-18.2-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
@@ -14,13 +14,13 @@ A production-ready, full-stack enterprise multi-tenant ERP platform for Higher E
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
-- [Architectural Overview](#-architectural-overview)
+- [Architectural Overview](#architectural-overview)
   - [Full-Stack System Architecture](#full-stack-system-architecture)
   - [Entity Relationship Diagram](#entity-relationship-diagram)
   - [Multi-Tenant OAuth2 OIDC Request Lifecycle](#multi-tenant-oauth2-oidc-request-lifecycle)
-- [Key Features & Modules](#-key-features--modules)
+- [Key Features & Modules](#key-features--modules)
   - [1. Single Page Application (React + Vite UI)](#1-single-page-application-react--vite-ui)
   - [2. Multi-Tenancy & Platform Administration](#2-multi-tenancy--platform-administration)
   - [3. Keycloak IAM & Automatic User Provisioning](#3-keycloak-iam--automatic-user-provisioning)
@@ -29,59 +29,58 @@ A production-ready, full-stack enterprise multi-tenant ERP platform for Higher E
   - [6. Placement Engine & Real-Time Eligibility Rule Engine](#6-placement-engine--real-time-eligibility-rule-engine)
   - [7. In-App Notification Center](#7-in-app-notification-center)
   - [8. Audit Logging & Compliance](#8-audit-logging--compliance)
-- [Security & RBAC Matrix](#-security--rbac-matrix)
-- [API Endpoint Catalog](#-api-endpoint-catalog)
-- [Getting Started & Local Setup](#-getting-started--local-setup)
+- [Security & RBAC Matrix](#security--rbac-matrix)
+- [API Endpoint Catalog](#api-endpoint-catalog)
+- [Getting Started & Local Setup](#getting-started--local-setup)
   - [Prerequisites](#prerequisites)
   - [1. Quick Start via Docker Compose](#1-quick-start-via-docker-compose)
   - [2. Running Backend & Frontend Locally](#2-running-backend--frontend-locally)
   - [3. Test Credentials & Keycloak Access](#3-test-credentials--keycloak-access)
   - [4. Automated QA & Verification Scripts](#4-automated-qa--verification-scripts)
-- [DevOps & Automation Utilities](#-devops--automation-utilities)
-- [Documentation Hub](#-documentation-hub)
-- [Directory & Project Layout](#-directory--project-layout)
+- [DevOps & Automation Utilities](#devops--automation-utilities)
+- [Documentation Hub](#documentation-hub)
+- [Directory & Project Layout](#directory--project-layout)
 
 ---
 
-## 🏗️ Architectural Overview
+## Architectural Overview
 
 ### Full-Stack System Architecture
 
 ```mermaid
 graph TD
-    User([End User / Web Browser]) -->|HTTP / OIDC PKCE Auth| SPA[React + Vite Frontend App :3000]
-    SPA -->|1. Redirect for Login / Auth Token| KC[Keycloak IAM Server :8081]
-    KC -->> SPA: 2. Return Access Token & Id Token (PKCE Flow)
+    User["End User / Web Browser"] -->|"HTTP / OIDC PKCE Auth"| SPA["React + Vite Frontend App (Port 3000)"]
+    SPA -->|"1. Redirect for Authentication"| KC["Keycloak IAM Server (Port 8081)"]
+    KC -.->|"2. Return Access & ID Tokens"| SPA
     
-    SPA -->|3. REST API Requests + Bearer Token| Gate[Spring Security Resource Server Filter Chain :8080]
-    Gate -->|4. Validate JWT Claims| KC
-    Gate -->|5. Extract Tenant Context & User Sub| TFilter[TenantContextFilter & RequestIdFilter]
-    TFilter -->|6. ThreadLocal Injection| Context[Tenant & Security Context]
-    Context --> Controllers[REST Controllers Layer]
+    SPA -->|"3. REST API + Bearer Token"| Gate["Spring Security Filter Chain (Port 8080)"]
+    Gate -->|"4. Validate JWT Claims"| KC
+    Gate -->|"5. Extract Tenant Context & User Sub"| TFilter["TenantContextFilter & RequestIdFilter"]
+    TFilter -->|"6. ThreadLocal Injection"| Context["Tenant Context & SecurityContext"]
+    Context --> Controllers["REST Controllers Layer"]
     
-    subgraph Spring Boot 3.3 Backend Services
-        Controllers --> Academic[Academic Service]
-        Controllers --> Exam[Exam & Seating Service]
-        Controllers --> Placement[Placement Engine Service]
-        Controllers --> Provision[Keycloak Provisioning & Admin Client]
-        Controllers --> Notif[Notification Service]
-        Controllers --> Audit[Audit Service]
-        Controllers --> Tenant[Platform Tenant Service]
+    subgraph Backend_Services["Spring Boot 3.3 Backend Services"]
+        Controllers --> Academic["Academic Service"]
+        Controllers --> Exam["Exam & Seating Service"]
+        Controllers --> Placement["Placement Engine Service"]
+        Controllers --> Provision["Keycloak Provisioning Service"]
+        Controllers --> Notif["Notification Service"]
+        Controllers --> Audit["Audit Service"]
+        Controllers --> Tenant["Platform Tenant Service"]
         
-        Exam -->|Seating Algorithm| Alg[Exam Seating Engine]
-        Placement -->|Eligibility Engine| Elg[Placement Eligibility Rule Engine]
+        Exam --> Alg["Exam Seating Engine"]
+        Placement --> Elg["Placement Eligibility Rule Engine"]
     end
 
-    subgraph Data & Storage Layer
-        Academic --> Repos[Spring Data JPA Repositories]
+    subgraph Data_Layer["Data & Persistence Layer"]
+        Academic --> Repos["Spring Data JPA Repositories"]
         Exam --> Repos
         Placement --> Repos
         Notif --> Repos
         Audit --> Repos
         Tenant --> Repos
         
-        Repos -->|Tenant-Scoped Queries| DB[(MySQL 8.0 Database :3306)]
-        Services -->|Flyway Migrations V1-V3| DB
+        Repos --> DB[("MySQL 8.0 Database (Port 3306)")]
     end
 ```
 
@@ -133,7 +132,7 @@ sequenceDiagram
     User->>SPA: Access Application
     SPA->>KC: Redirect to OIDC Login (PKCE)
     User->>KC: Authenticate Credentials
-    KC-->>SPA: Redirect with Authorization Code -> Token (tenant_id, roles)
+    KC-->>SPA: Redirect with Auth Code -> Tokens (tenant_id, roles)
     SPA->>App: GET /api/v1/academic/courses (Header: Bearer JWT Token, X-Tenant-ID)
     App->>App: TenantContextFilter validates JWT signature & tenant claims
     App->>App: Verify Tenant status (Must be ACTIVE)
@@ -146,7 +145,7 @@ sequenceDiagram
 
 ---
 
-## ⚡ Key Features & Modules
+## Key Features & Modules
 
 ### 1. Single Page Application (React + Vite UI)
 - **Modern UI**: Full-fledged single page application built with React 18, Vite, and custom CSS design system.
@@ -190,22 +189,22 @@ sequenceDiagram
 
 ---
 
-## 🔒 Security & RBAC Matrix
+## Security & RBAC Matrix
 
 | Role | Platform Tenants | User Mgmt | Academic Admin | Exam Schedules & Marks | Seating & Hall Tickets | Placement Drives & Offers | Audit & Notifications |
 |------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **PLATFORM_SUPER_ADMIN** | Full Access | Full Access | Read-Only | Read-Only | Read-Only | Read-Only | System Audit |
 | **TENANT_ADMIN** | Tenant Self | Full Access | Full Access | Full Access | Full Access | Full Access | Tenant Audit |
-| **ACADEMIC_ADMIN** | ❌ | User View | Full Access | View Only | View Only | View Only | View Notifications |
-| **EXAM_CONTROLLER** | ❌ | ❌ | View Only | Full Access | Full Access | ❌ | View Notifications |
-| **FACULTY** | ❌ | ❌ | Assigned Courses | Enter Marks | View Schedule | ❌ | View Notifications |
-| **STUDENT** | ❌ | Profile View | Enrolled Courses | View Marks / Revaluation | View Hall Ticket | Apply & Manage Offers | In-App Alerts |
-| **PLACEMENT_OFFICER** | ❌ | ❌ | View Students | ❌ | ❌ | Full Access | View Notifications |
-| **RECRUITER** | ❌ | ❌ | ❌ | ❌ | ❌ | Manage Drives & Applicants | ❌ |
+| **ACADEMIC_ADMIN** | X | User View | Full Access | View Only | View Only | View Only | View Notifications |
+| **EXAM_CONTROLLER** | X | X | View Only | Full Access | Full Access | X | View Notifications |
+| **FACULTY** | X | X | Assigned Courses | Enter Marks | View Schedule | X | View Notifications |
+| **STUDENT** | X | Profile View | Enrolled Courses | View Marks / Revaluation | View Hall Ticket | Apply & Manage Offers | In-App Alerts |
+| **PLACEMENT_OFFICER** | X | X | View Students | X | X | Full Access | View Notifications |
+| **RECRUITER** | X | X | X | X | X | Manage Drives & Applicants | X |
 
 ---
 
-## 🔌 API Endpoint Catalog
+## API Endpoint Catalog
 
 ### Platform & Tenant APIs
 - `GET /api/v1/platform/tenants` — List registered platform tenants (`PLATFORM_SUPER_ADMIN`)
@@ -249,7 +248,7 @@ sequenceDiagram
 
 ---
 
-## 🚀 Getting Started & Local Setup
+## Getting Started & Local Setup
 
 ### Prerequisites
 - **Java 21 JDK**
@@ -320,7 +319,7 @@ Other available scripts:
 
 ---
 
-## 🛠️ DevOps & Automation Utilities
+## DevOps & Automation Utilities
 
 - **Database Backup**: `powershell -ExecutionPolicy Bypass -File scripts/backup-mysql.ps1`
 - **Database Restore**: `powershell -ExecutionPolicy Bypass -File scripts/restore-mysql.ps1`
@@ -328,16 +327,16 @@ Other available scripts:
 
 ---
 
-## 📚 Documentation Hub
+## Documentation Hub
 
 Detailed documentation is available in the [`docs/`](docs/) directory:
 
-- [📄 **Internship Project Report**](docs/INTERNSHIP_PROJECT_REPORT.md): Complete 500+ line technical project report including background, architectural decisions, multi-tenant isolation mechanics, module specifications, security verification, and performance evaluation.
-- [📄 **Production Deployment Guide**](docs/PRODUCTION.md): Production hardening, environment variable configurations, SSL/TLS reverse proxy setup, and database backup strategies.
+- [**Internship Project Report**](docs/INTERNSHIP_PROJECT_REPORT.md): Complete 500+ line technical project report including background, architectural decisions, multi-tenant isolation mechanics, module specifications, security verification, and performance evaluation.
+- [**Production Deployment Guide**](docs/PRODUCTION.md): Production hardening, environment variable configurations, SSL/TLS reverse proxy setup, and database backup strategies.
 
 ---
 
-## 📁 Directory & Project Layout
+## Directory & Project Layout
 
 ```
 CA/
@@ -395,6 +394,6 @@ CA/
 
 ---
 
-## 📜 License & Acknowledgments
+## License & Acknowledgments
 
 Developed as a Full-Stack Enterprise College Administration SaaS ERP Platform for higher educational institutions.
