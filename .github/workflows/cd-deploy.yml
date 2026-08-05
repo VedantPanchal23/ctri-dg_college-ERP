@@ -1,0 +1,121 @@
+name: CD — Deploy
+
+# Deploys published GHCR images to a server over SSH.
+# Requires repository secrets (see docs/CICD.md).
+
+on:
+  workflow_run:
+    workflows: ["CD — Publish images"]
+    types: [completed]
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (e.g. latest, sha-abc1234, 1.0.0)"
+        required: true
+        default: latest
+
+concurrency:
+  group: cd-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+jobs:
+  deploy:
+    name: SSH deploy (Compose prod)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Require deploy secrets
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$KEY" ]; then
+            echo "::error::Missing DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY. See docs/CICD.md"
+            exit 1
+          fi
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Add host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync compose + deploy helpers
+        env:
+          REMOTE: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          PATH_REMOTE: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          DEST="${PATH_REMOTE:-/opt/college-admin}"
+          ssh "$REMOTE" "mkdir -p '$DEST/mysql' '$DEST/scripts' '$DEST/keycloak'"
+          scp docker-compose.yml docker-compose.prod.yml docker-compose.release.yml \
+            "$REMOTE:$DEST/"
+          scp -r mysql/init "$REMOTE:$DEST/mysql/" || true
+          scp keycloak/realm-export.json "$REMOTE:$DEST/keycloak/" || true
+          scp scripts/remote-deploy.sh "$REMOTE:$DEST/remote-deploy.sh"
+          ssh "$REMOTE" "chmod +x '$DEST/remote-deploy.sh'"
+
+      - name: Pull images & restart stack
+        env:
+          REMOTE: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          PATH_REMOTE: ${{ secrets.DEPLOY_PATH }}
+          IMAGE_TAG: ${{ steps.tag.outputs.value }}
+          GHCR_USER: ${{ secrets.GHCR_PULL_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: |
+          DEST="${PATH_REMOTE:-/opt/college-admin}"
+          PREFIX=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          USER_NAME="${GHCR_USER:-${{ github.repository_owner }}}"
+          TOKEN="${GHCR_TOKEN:-}"
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Set GHCR_PULL_TOKEN (PAT with read:packages) for the server to pull private GHCR images"
+            exit 1
+          fi
+          ssh "$REMOTE" \
+            "export IMAGE_PREFIX='$PREFIX' IMAGE_TAG='$IMAGE_TAG' GHCR_USER='$USER_NAME' GHCR_TOKEN='$TOKEN'; \
+             cd '$DEST' && bash ./remote-deploy.sh"
+
+      - name: Smoke health check
+        env:
+          HEALTH_URL: ${{ secrets.DEPLOY_HEALTH_URL }}
+        run: |
+          if [ -z "$HEALTH_URL" ]; then
+            echo "DEPLOY_HEALTH_URL not set — skipping remote smoke"
+            exit 0
+          fi
+          for i in $(seq 1 30); do
+            if curl -fsS "$HEALTH_URL" | grep -qi UP; then
+              echo "Health OK"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Health check failed for $HEALTH_URL"
+          exit 1

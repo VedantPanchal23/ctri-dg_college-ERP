@@ -1,0 +1,11 @@
+# Overrides app/frontend to use GHCR images (no local build).
+# Pair with: docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml
+
+services:
+  app:
+    image: ${IMAGE_PREFIX}/app:${IMAGE_TAG:-latest}
+    pull_policy: always
+
+  frontend:
+    image: ${IMAGE_PREFIX}/frontend:${IMAGE_TAG:-latest}
+    pull_policy: always

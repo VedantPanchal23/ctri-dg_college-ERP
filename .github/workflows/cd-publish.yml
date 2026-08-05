@@ -1,0 +1,117 @@
+name: CD — Publish images
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  publish:
+    name: Build & push GHCR images
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lowercase image prefix
+        id: img
+        run: |
+          owner_repo="${{ github.repository }}"
+          prefix="ghcr.io/$(echo "$owner_repo" | tr '[:upper:]' '[:lower:]')"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve frontend Keycloak URL
+        id: fe
+        run: |
+          echo "kc_url=${KC_URL:-http://localhost:8081}" >> "$GITHUB_OUTPUT"
+          echo "kc_realm=${KC_REALM:-college-admin}" >> "$GITHUB_OUTPUT"
+          echo "kc_client=${KC_CLIENT:-college-admin-web}" >> "$GITHUB_OUTPUT"
+        env:
+          KC_URL: ${{ vars.VITE_KEYCLOAK_URL }}
+          KC_REALM: ${{ vars.VITE_KEYCLOAK_REALM }}
+          KC_CLIENT: ${{ vars.VITE_KEYCLOAK_CLIENT_ID }}
+
+      - name: Docker metadata (app)
+        id: meta-app
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.prefix }}/app
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Docker metadata (frontend)
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.prefix }}/frontend
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta-app.outputs.tags }}
+          labels: ${{ steps.meta-app.outputs.labels }}
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          build-args: |
+            VITE_API_BASE=
+            VITE_KEYCLOAK_URL=${{ steps.fe.outputs.kc_url }}
+            VITE_KEYCLOAK_REALM=${{ steps.fe.outputs.kc_realm }}
+            VITE_KEYCLOAK_CLIENT_ID=${{ steps.fe.outputs.kc_client }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published images"
+            echo "- App: \`${{ steps.img.outputs.prefix }}/app\`"
+            echo "- Frontend: \`${{ steps.img.outputs.prefix }}/frontend\`"
+            echo ""
+            echo "App tags:"
+            echo '```'
+            echo "${{ steps.meta-app.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
