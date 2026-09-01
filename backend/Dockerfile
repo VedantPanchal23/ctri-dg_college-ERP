@@ -4,7 +4,7 @@ COPY pom.xml .
 COPY src ./src
 RUN mvn -q -DskipTests package
 
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
